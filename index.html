@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asset Management Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+        }
+        input, button {
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #28a745;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #218838;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            padding: 10px;
+            border: 1px solid #ccc;
+            text-align: left;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        .remove-btn, .edit-btn, .delete-all-btn {
+            background-color: #dc3545;
+            color: white;
+            cursor: pointer;
+        }
+        .edit-btn {
+            background-color: #007bff;
+        }
+        .edit-btn:hover {
+            background-color: #0056b3;
+        }
+        .remove-btn:hover {
+            background-color: #c82333;
+        }
+        .delete-all-btn:hover {
+            background-color: #bd2130;
+        }
+        .sort-btn {
+            cursor: pointer;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .page-btn {
+            margin: 0 5px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .page-btn.active {
+            background-color: #007bff;
+            color: white;
+        }
+        .download-btns {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Asset Management Tool</h1>
+        <form id="assetForm">
+            <input type="text" id="assetName" placeholder="Asset Name" required>
+            <input type="text" id="assetType" placeholder="Asset Type" required>
+            <input type="text" id="assetValue" placeholder="Asset Value" required>
+            <button type="submit">Add Asset</button>
+        </form>
+        <div class="download-btns">
+            <button onclick="downloadPDF()">Download PDF</button>
+            <button onclick="downloadCSV()">Download CSV</button>
+            <button onclick="downloadTXT()">Download TXT</button>
+        </div>
+        <button id="deleteAllBtn" class="delete-all-btn">Delete All Assets</button>
+        <input type="text" id="searchInput" placeholder="Search Assets" onkeyup="searchAssets()">
+        <table id="myTable">
+            <thead>
+                <tr>
+                    <th class="sort-btn" onclick="sortAssets('name')">Name</th>
+                    <th class="sort-btn" onclick="sortAssets('type')">Type</th>
+                    <th class="sort-btn" onclick="sortAssets('value')">Value</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody id="assetTableBody">
+                <!-- Asset rows will be added here -->
+            </tbody>
+        </table>
+        <div class="pagination" id="pagination">
+            <!-- Pagination buttons will be added here -->
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const assetForm = document.getElementById('assetForm');
+            const assetTableBody = document.getElementById('assetTableBody');
+            const deleteAllBtn = document.getElementById('deleteAllBtn');
+            const searchInput = document.getElementById('searchInput');
+            const pagination = document.getElementById('pagination');
+            const itemsPerPage = 5;
+            let currentPage = 1;
+            let editIndex = null;
+
+            const getAssets = () => {
+                return JSON.parse(localStorage.getItem('assets')) || [];
+            };
+
+            const saveAssets = (assets) => {
+                localStorage.setItem('assets', JSON.stringify(assets));
+            };
+
+            const addAssetToTable = (asset, index) => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${asset.name}</td>
+                    <td>${asset.type}</td>
+                    <td>${asset.value}</td>
+                    <td>
+                        <button class="edit-btn" data-index="${index}">Edit</button>
+                        <button class="remove-btn" data-index="${index}">Remove</button>
+                    </td>
+                `;
+                assetTableBody.appendChild(row);
+            };
+
+            const renderAssets = () => {
+                assetTableBody.innerHTML = '';
+                const assets = getAssets();
+                const filteredAssets = assets.filter(asset => 
+                    asset.name.toLowerCase().includes(searchInput.value.toLowerCase()) ||
+                    asset.type.toLowerCase().includes(searchInput.value.toLowerCase()) ||
+                    asset.value.toLowerCase().includes(searchInput.value.toLowerCase())
+                );
+
+                const start = (currentPage - 1) * itemsPerPage;
+                const end = start + itemsPerPage;
+                const paginatedAssets = filteredAssets.slice(start, end);
+
+                paginatedAssets.forEach((asset, index) => addAssetToTable(asset, start + index));
+                renderPagination(filteredAssets.length);
+            };
+
+            const renderPagination = (totalItems) => {
+                pagination.innerHTML = '';
+                const totalPages = Math.ceil(totalItems / itemsPerPage);
+
+                for (let i = 1; i <= totalPages; i++) {
+                    const btn = document.createElement('button');
+                    btn.classList.add('page-btn');
+                    if (i === currentPage) btn.classList.add('active');
+                    btn.innerText = i;
+                    btn.addEventListener('click', () => {
+                        currentPage = i;
+                        renderAssets();
+                    });
+                    pagination.appendChild(btn);
+                }
+            };
+
+            assetForm.addEventListener('submit', (event) => {
+                event.preventDefault();
+                const assetName = document.getElementById('assetName').value;
+                const assetType = document.getElementById('assetType').value;
+                const assetValue = document.getElementById('assetValue').value;
+
+                const newAsset = { name: assetName, type: assetType, value: assetValue };
+                const assets = getAssets();
+
+                if (editIndex !== null) {
+                    assets[editIndex] = newAsset;
+                    editIndex = null;
+                } else {
+                    assets.push(newAsset);
+                }
+
+                saveAssets(assets);
+                renderAssets();
+                assetForm.reset();
+            });
+
+            assetTableBody.addEventListener('click', (event) => {
+                if (event.target.classList.contains('remove-btn')) {
+                    const index = event.target.getAttribute('data-index');
+                    const assets = getAssets();
+                    assets.splice(index, 1);
+                    saveAssets(assets);
+                    renderAssets();
+                } else if (event.target.classList.contains('edit-btn')) {
+                    const index = event.target.getAttribute('data-index');
+                    const assets = getAssets();
+                    const asset = assets[index];
+                    document.getElementById('assetName').value = asset.name;
+                    document.getElementById('assetType').value = asset.type;
+                    document.getElementById('assetValue').value = asset.value;
+                    editIndex = index;
+                }
+            });
+
+            deleteAllBtn.addEventListener('click', () => {
+                localStorage.removeItem('assets');
+                renderAssets();
+            });
+
+            const searchAssets = () => {
+                currentPage = 1;
+                renderAssets();
+            };
+
+            const sortAssets = (key) => {
+                const assets = getAssets();
+                assets.sort((a, b) => a[key].localeCompare(b[key]));
+                saveAssets(assets);
+                renderAssets();
+            };
+
+            renderAssets();
+        });
+
+        function downloadPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const table = document.getElementById('myTable');
+
+            // Convert HTML table to PDF
+            doc.autoTable({ html: table });
+            doc.save('table.pdf');
+        }
+
+        function downloadCSV() {
+            const table = document.getElementById('myTable');
+            let csvContent = '';
+            for (let row of table.rows) {
+                let rowData = [];
+                for (let cell of row.cells) {
+                    rowData.push(cell.textContent);
+                }
+                csvContent += rowData.join(',') + '\n';
+            }
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            saveAs(blob, 'table.csv');
+        }
+
+        function downloadTXT() {
+            const table = document.getElementById('myTable');
+            let txtContent = '';
+            for (let row of table.rows) {
+                let rowData = [];
+                for (let cell of row.cells) {
+                    rowData.push(cell.textContent);
+                }
+                txtContent += rowData.join('\t') + '\n';
+            }
+            const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+            saveAs(blob, 'table.txt');
+        }
+    </script>
+</body>
+</html>
